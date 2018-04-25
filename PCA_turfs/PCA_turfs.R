@@ -2,14 +2,20 @@
 # Principal Components Analysis - 2017 RMBL turf transplant data
 # Lorah Patterson
 
+install_github("vqv/ggbiplot")
 library(dplyr)
 library(tidyr)
 library(plyr)
+library(ggplot2)
+library(devtools)
+library(ggbiplot)
+library(Rmisc)
 
 setwd("~/Documents/R_data/PCA_turfs_April2018/")
 turf_traits <- read.csv("Leaf_Traits_2017_040818.csv", header = TRUE)
 turf_abund <- read.csv("Abundance_2017_JS_LP.csv", header = TRUE)
 
+######################################################
 ### GOAL 1: Calculate weighted trait means per block.
 
   # 1) Calculate the mean of each trait per species/block/site. Note: In 2017, we collected trait data by block, not by plot.
@@ -62,8 +68,9 @@ tot_traits_abundance <- mutate(tot_traits_abundance, weighted_thick = (mean_thic
 tot_weight_traits4 <- read.csv("tot_weight_traits4.csv", header = TRUE, row.names=1)  # Import data from excel. Make sure row names are column 1.
 traits_matrix <- data.matrix(tot_weight_traits4, rownames.force = TRUE) # Convert data frame into matrix. Samples should be rows and traits should be columns for PCA.
 
+elevations <- read.csv("elevations.csv", header=TRUE)
 
-
+###########################################
 ### GOAL 2: Principal Components Analysis (PCA) of traits across sites (Source: Joshua Starmer StatQuest https://www.youtube.com/watch?v=0Jp4gsfOLMs)
 
   # 1) Run the prcomp function on the traits_matrix
@@ -77,10 +84,16 @@ pca_traits_var_per <- round(pca_traits_var/sum(pca_traits_var)*100,1) # Calculat
 barplot(pca_traits_var_per, main="Scree Plot", xlab="Principal Component", ylab="Percent Variation")
 
   # 3) fancier plots using ggplot2 
-pca_data <- data.frame(Sample=rownames(pca_traits$x), X=pca_traits$x[,1], Y=pca_traits$x[,2])
+pca_data <- data.frame(Sample=rownames(pca_traits$x), Elevation=(elevations$Elevation), X=pca_traits$x[,1], Y=pca_traits$x[,2])
 pca_data
 
-ggplot(data=pca_data, aes(x=X, y=Y, label=Sample)) + geom_text() + xlab(paste("PC1 -", pca_traits_var_per[1], "%", sep="")) + ylab(paste("PC2 - ", pca_traits_var_per[2], "%", sep="")) + theme_bw() + ggtitle("Principal Components Analysis")
+# plot with just dots corresponding to blocks per site, noarrows
+pca_plot <- ggplot(data=pca_data, aes(x=X, y=Y, label=Sample)) + geom_point(aes(color=factor(Elevation))) + scale_color_manual("Elevation (m)", values = c("2700"="red3", "2900" = "orangered1", "3200" = "blue1", "3300" = "blue4")) + xlab(paste("PC1 -", pca_traits_var_per[1], "%", sep="")) + ylab(paste("PC2 - ", pca_traits_var_per[2], "%", sep="")) + theme_bw() + ggtitle("Principal Components Analysis") 
+
+# plot also with arrows showing loadings
+biplot3 <- ggbiplot(pca_traits) + coord_cartesian(xlim=c(-2,2), ylim=c(-1,3.5)) + geom_point(aes(color=factor(elevations$Elevation))) + scale_color_manual("Elevation (m)", values = c("2700"="red3", "2900" = "orangered1", "3200" = "blue1", "3300" = "blue4")) 
+
+#ggplot(data=pca_data, aes(x=X, y=Y, label=Sample)) + geom_text() + xlab(paste("PC1 -", pca_traits_var_per[1], "%", sep="")) + ylab(paste("PC2 - ", pca_traits_var_per[2], "%", sep="")) + theme_bw() + ggtitle("Principal Components Analysis")
 
   # 4) "Loading scores" show us which traits on PC1 push samples to the left side of the graph (negative score) or right side (positive score)
 
@@ -90,5 +103,26 @@ trait_scores_ranked <- sort(trait_scores, decreasing=TRUE) # Sort the magnitude 
 top_traits <- names(trait_scores_ranked[1:4]) # list of traits from high to low magnitude
 pca_traits$rotation[top_traits,1] # This shows the scores and the positive or negative values. LDMC, thickness, and SLA push the samples right (positive score) and leaf area pushes the samples left (neg score) along PC1
 
+## Same PCA analysis but using princomp
+leaf_area <- tot_weight_traits4$tot_weight_LA
+SLA <- tot_weight_traits4$tot_weight_SLA
+LDMC <- tot_weight_traits4$tot_weight_LDMC
+thickness <- tot_weight_traits4$tot_weight_thick
 
-### GOAL 3: create data matrix of cover of species per plot (maybe just do dominant species)
+pca_2 <- princomp(~leaf_area + SLA + LDMC + thickness, cor=TRUE)
+summary(pca_2)
+loadings(pca_2)
+loadings_c <- loadings(pca_2)
+write.csv(loadings_c, "PCA_c_CommunityTrait.csv")
+
+png("Figure_PCA_a_gradient_plot.png", units="in", width=5, height=4, pointsize=9, res=900)
+PCA_Plot_a <- biplot(pca_2, col=c("gray","black"),cex=c(0.8,0.5))
+PCA_Plot_a
+dev.off()
+
+#########################################################
+### GOAL 3: Correlate PCA wth environmental variables.
+
+
+
+### GOAL 4: create data matrix of cover of species per plot (maybe just do dominant species)
